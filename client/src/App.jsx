@@ -2,6 +2,7 @@
 
 const API_BASE_URL = "http://localhost:5000/api";
 const PRODUCT_ID = "soundhub-headphones-001";
+const HELPFUL_STORAGE_KEY = "soundhub_helpful_reviews";
 
 function StarPicker({ value, onChange }) {
   return (
@@ -27,6 +28,15 @@ function App() {
   const [totalReviews, setTotalReviews] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [helpfulLoadingId, setHelpfulLoadingId] = useState("");
+  const [votedHelpfulIds, setVotedHelpfulIds] = useState(() => {
+    try {
+      const stored = localStorage.getItem(HELPFUL_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [error, setError] = useState("");
 
   const [formData, setFormData] = useState({
@@ -60,6 +70,10 @@ function App() {
     fetchReviews();
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem(HELPFUL_STORAGE_KEY, JSON.stringify(votedHelpfulIds));
+  }, [votedHelpfulIds]);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSubmitting(true);
@@ -88,6 +102,10 @@ function App() {
   };
 
   const markHelpful = async (reviewId) => {
+    if (votedHelpfulIds.includes(reviewId)) {
+      return;
+    }
+    setHelpfulLoadingId(reviewId);
     try {
       const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}/helpful`, {
         method: "POST",
@@ -96,9 +114,12 @@ function App() {
       if (!response.ok || !result.success) {
         throw new Error(result.message || "Unable to mark helpful");
       }
+      setVotedHelpfulIds((prev) => [...prev, reviewId]);
       await fetchReviews();
     } catch (err) {
       setError(err.message || "Something went wrong");
+    } finally {
+      setHelpfulLoadingId("");
     }
   };
 
@@ -160,7 +181,12 @@ function App() {
             reviews.map((review) => (
               <article key={review._id} className="review-item">
                 <div className="review-head">
-                  <strong>{review.customerName}</strong>
+                  <div>
+                    <strong>{review.customerName}</strong>
+                    <small className="review-date">
+                      {new Date(review.createdAt).toLocaleDateString()}
+                    </small>
+                  </div>
                   <span>{"★".repeat(review.rating)}</span>
                 </div>
                 <p>{review.comment}</p>
@@ -168,8 +194,13 @@ function App() {
                   type="button"
                   className="helpful-btn"
                   onClick={() => markHelpful(review._id)}
+                  disabled={votedHelpfulIds.includes(review._id) || helpfulLoadingId === review._id}
                 >
-                  👍 Helpful ({review.helpfulCount || 0})
+                  {votedHelpfulIds.includes(review._id)
+                    ? `✓ Marked Helpful (${review.helpfulCount || 0})`
+                    : helpfulLoadingId === review._id
+                    ? "Updating..."
+                    : `👍 Helpful (${review.helpfulCount || 0})`}
                 </button>
               </article>
             ))}
